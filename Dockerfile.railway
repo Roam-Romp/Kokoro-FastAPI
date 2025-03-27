@@ -1,0 +1,43 @@
+FROM python:3.10-slim
+
+# 필수 패키지 설치
+RUN apt-get update && apt-get install -y \
+    espeak-ng \
+    espeak-ng-data \
+    git \
+    libsndfile1 \
+    ffmpeg \
+    g++ \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/share/espeak-ng-data \
+    && ln -s /usr/lib/*/espeak-ng-data/* /usr/share/espeak-ng-data/
+
+WORKDIR /app
+
+# 프로젝트 파일 복사
+COPY . .
+
+# 빌드 도구 업그레이드 및 종속성 설치
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel build && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir git+https://github.com/hexgrad/kokoro.git@31a2b6337b8c1b1418ef68c48142328f640da938 && \
+    pip install --no-cache-dir 'misaki[en,ja,ko,zh]@git+https://github.com/hexgrad/misaki.git@ebc76c21b66c5fc4866ed0ec234047177b396170' && \
+    pip install --no-cache-dir https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl && \
+    pip install --no-cache-dir phonemizer-fork>=3.3.2
+
+# 환경 변수 설정
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app:/app/api \
+    PHONEMIZER_ESPEAK_PATH=/usr/bin \
+    PHONEMIZER_ESPEAK_DATA=/usr/share/espeak-ng-data \
+    ESPEAK_DATA_PATH=/usr/share/espeak-ng-data \
+    DEVICE="cpu"
+
+# 모델 다운로드 스크립트 실행 (필요한 경우)
+RUN if [ "$DOWNLOAD_MODEL" = "true" ]; then \
+    python docker/scripts/download_model.py --output api/src/models/v1_0; \
+    fi
+
+# 서버 실행
+CMD ["python", "-m", "api.src.main"]
